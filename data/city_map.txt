@@ -1,0 +1,75 @@
+# Smart City road network
+# NODE <id> <x> <y> <junction|hospital|landmark> <Name_with_underscores>
+# ROAD <u> <v> <lanes> <speed_kmh>      (two-way; length = straight line * 5 m/unit)
+
+NODE 0   80  80 junction North_Gate
+NODE 1  250  70 junction Airport_Road
+NODE 2  410  90 landmark Tech_Park
+NODE 3  570  75 junction University
+NODE 4  730  85 landmark Stadium
+NODE 5  900  80 junction East_Port
+NODE 6   70 250 junction Lake_View
+NODE 7  240 260 junction Old_Town
+NODE 8  400 240 landmark Central_Square
+NODE 9  560 255 landmark City_Mall
+NODE 10 720 245 junction Bus_Depot
+NODE 11 890 260 junction Industrial_Zone
+NODE 12  85 420 junction West_End
+NODE 13 250 415 hospital City_Hospital
+NODE 14 410 430 landmark Railway_Station
+NODE 15 570 420 landmark Market_Yard
+NODE 16 735 425 junction Fire_Station
+NODE 17 895 415 junction River_Bridge
+NODE 18  80 590 junction South_Park
+NODE 19 240 600 junction Residency
+NODE 20 400 585 junction Police_HQ
+NODE 21 560 600 junction Civic_Center
+NODE 22 720 590 junction Highway_Junction
+NODE 23 900 595 junction Harbour
+
+# east-west streets
+ROAD 0 1 2 40
+ROAD 1 2 2 40
+ROAD 2 3 2 40
+ROAD 3 4 2 40
+ROAD 4 5 2 40
+ROAD 6 7 3 60
+ROAD 7 8 3 60
+ROAD 8 9 3 60
+ROAD 9 10 3 60
+ROAD 10 11 3 60
+ROAD 13 14 2 40
+ROAD 14 15 2 40
+ROAD 15 16 2 40
+ROAD 16 17 2 40
+ROAD 18 19 2 50
+ROAD 19 20 2 50
+ROAD 20 21 2 50
+ROAD 21 22 2 50
+ROAD 22 23 2 50
+
+# north-south avenues
+ROAD 0 6 2 40
+ROAD 6 12 2 40
+ROAD 12 18 2 40
+ROAD 1 7 2 40
+ROAD 7 13 2 40
+ROAD 13 19 2 40
+ROAD 2 8 3 60
+ROAD 8 14 3 60
+ROAD 14 20 3 60
+ROAD 9 15 2 40
+ROAD 15 21 2 40
+ROAD 4 10 2 40
+ROAD 10 16 2 40
+ROAD 16 22 2 40
+ROAD 5 11 2 50
+ROAD 11 17 2 50
+ROAD 17 23 2 50
+
+# diagonal links
+ROAD 7 14 2 50
+ROAD 2 9 2 50
+ROAD 9 16 2 50
+ROAD 14 21 2 50
+ROAD 10 17 1 40

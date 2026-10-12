@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart City Traffic</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Smart City Traffic Intelligence</h1>
+    <p class="sub">Core engine in C &middot; graphs, priority queues, shortest paths, signal simulation</p>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="sim" class="active">Live simulation</button>
+    <button role="tab" data-tab="route">Route planner</button>
+    <button role="tab" data-tab="stats">Analytics</button>
+  </nav>
+  <button id="theme" class="ghost" title="Toggle light / dark">Theme</button>
+</header>
+
+<div id="nodata" class="nodata" hidden>
+  <h2>No simulation data yet</h2>
+  <p>Build and run the C core first:</p>
+  <pre>cd smart-city-traffic
+make export</pre>
+  <p>Then reload this page. It reads <code>web/data/sim_data.js</code>.</p>
+</div>
+
+<main id="app">
+  <!-- ============================================================ SIMULATION -->
+  <section id="tab-sim" class="tab active">
+    <div class="layout">
+      <div class="stage">
+        <div class="toolbar">
+          <div class="seg" id="run-select">
+            <button data-run="0">Without green corridor</button>
+            <button data-run="1" class="active">With green corridor</button>
+          </div>
+          <button id="play" class="primary">Pause</button>
+          <div class="seg" id="speed">
+            <button data-speed="2">2&times;</button>
+            <button data-speed="5" class="active">5&times;</button>
+            <button data-speed="12">12&times;</button>
+          </div>
+          <label class="check"><input type="checkbox" id="follow"> Follow ambulance</label>
+        </div>
+        <div class="canvas-wrap"><canvas id="map-sim"></canvas></div>
+        <div class="scrub">
+          <span id="clock" class="mono">0:00</span>
+          <input type="range" id="scrubber" min="0" max="1000" value="0" aria-label="Simulation time">
+          <span id="clock-end" class="mono muted">8:00</span>
+        </div>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--good)"></i>Free flow &lt;50%</span>
+          <span><i class="sw" style="background:var(--warning)"></i>Busy 50&ndash;90%</span>
+          <span><i class="sw" style="background:var(--serious)"></i>Heavy 90&ndash;130%</span>
+          <span><i class="sw" style="background:var(--critical)"></i>Jammed &gt;130%</span>
+          <span><i class="dot" style="background:var(--car)"></i>Vehicle</span>
+          <span><i class="dot amb"></i>Ambulance</span>
+          <span><i class="dot" style="background:var(--preempt)"></i>Pre-empted signal</span>
+        </div>
+      </div>
+      <aside class="panel">
+        <h2>Right now</h2>
+        <div class="tiles">
+          <div class="tile"><span class="label">Vehicles on road</span><span id="s-active" class="val">0</span></div>
+          <div class="tile"><span class="label">Stopped at signals</span><span id="s-queued" class="val">0</span></div>
+          <div class="tile"><span class="label">Avg congestion</span><span id="s-cong" class="val">0%</span></div>
+          <div class="tile"><span class="label">Signals</span><span id="s-signals" class="val">0</span></div>
+        </div>
+        <h2>Ambulance</h2>
+        <div class="amb-card">
+          <div id="amb-status" class="amb-status">Standby</div>
+          <div id="amb-route" class="muted small"></div>
+          <div class="bar"><div id="amb-progress"></div></div>
+        </div>
+        <h2>Corridor effect</h2>
+        <div id="compare" class="compare"></div>
+        <p class="muted small">Both runs use the same random seed, so every car is identical &mdash; the only
+          difference is whether signals on the ambulance's A* route turn green for it.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ ROUTE PLANNER -->
+  <section id="tab-route" class="tab">
+    <div class="layout">
+      <div class="stage">
+        <div class="toolbar">
+          <label>From <select id="r-from"></select></label>
+          <label>To <select id="r-to"></select></label>
+          <div class="seg" id="r-algo"></div>
+          <button id="r-animate" class="primary">Animate search</button>
+        </div>
+        <div class="canvas-wrap"><canvas id="map-route"></canvas></div>
+        <p class="muted small hint">Tip: click an intersection to set <b>From</b>, click another to set <b>To</b>.
+          Numbers on nodes show the order the algorithm explored them.</p>
+      </div>
+      <aside class="panel">
+        <h2 id="r-title">Route</h2>
+        <div id="r-path" class="path"></div>
+        <div class="tiles">
+          <div class="tile"><span class="label">Distance</span><span id="r-dist" class="val">&ndash;</span></div>
+          <div class="tile"><span class="label">Intersections</span><span id="r-hops" class="val">&ndash;</span></div>
+          <div class="tile"><span class="label">Nodes explored</span><span id="r-visited" class="val">&ndash;</span></div>
+          <div class="tile"><span class="label">Edges relaxed</span><span id="r-relax" class="val">&ndash;</span></div>
+        </div>
+        <h2>All algorithms, this route</h2>
+        <table class="data" id="r-table"></table>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ ANALYTICS -->
+  <section id="tab-stats" class="tab">
+    <div class="tiles wide" id="hero"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Nodes explored per query</h3>
+        <p class="muted small">City map, averaged over all source/destination pairs (distance weights). Fewer = less work.</p>
+        <div id="c-visited" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>Runtime vs. city size</h3>
+        <p class="muted small">Generated grid cities, average time per query, log&ndash;log scale. O(V&sup2;) array Dijkstra
+          falls behind the heap version as V grows.</p>
+        <div id="c-scale" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>Average road congestion over time</h3>
+        <p class="muted small">Mean load / capacity across all roads. The two lines overlap: pre-empting a few signals for the ambulance barely disturbs everyone else.</p>
+        <div id="c-cong" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>Ambulance response time</h3>
+        <p class="muted small">Same traffic, same A* route. Seconds from dispatch to arrival.</p>
+        <div id="c-amb" class="chart"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Algorithm comparison</h3>
+      <div class="seg" id="t-mode">
+        <button data-mode="distance" class="active">Shortest distance</button>
+        <button data-mode="time">Fastest time</button>
+      </div>
+      <div class="table-scroll"><table class="data" id="t-algos"></table></div>
+      <p class="muted small">
+        <b>Optimal</b> = share of queries where the route cost equals the true optimum.
+        BFS minimises the number of intersections, not distance, so it sometimes picks a longer road.
+        A* explores fewer nodes because its straight-line heuristic steers it toward the goal.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Scaling benchmark (raw numbers)</h3>
+      <div class="table-scroll"><table class="data" id="t-bench"></table></div>
+    </div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script src="data/sim_data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
