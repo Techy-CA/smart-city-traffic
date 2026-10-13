@@ -1,17 +1,4 @@
-#include "export.h"
-#include "algorithms.h"
-
-#include <stdio.h>
-
-static void json_str(FILE *f, const char *s)
-{
-    fputc('"', f);
-    for (; *s; s++) {
-        if (*s == '"' || *s == '\\') fputc('\\', f);
-        fputc(*s, f);
-    }
-    fputc('"', f);
-}
+#include "city.h"
 
 static void write_ints(FILE *f, const int *a, int n)
 {
@@ -26,26 +13,48 @@ static void write_graph(FILE *f, const Graph *g)
     fprintf(f, "\"nodes\":[");
     for (int i = 0; i < g->n_nodes; i++) {
         const Node *n = &g->nodes[i];
-        fprintf(f, "%s{\"id\":%d,\"name\":", i ? "," : "", n->id);
-        json_str(f, n->name);
-        fprintf(f, ",\"x\":%.1f,\"y\":%.1f,\"type\":\"%s\"}", n->x, n->y, types[n->type]);
+        fprintf(f, "%s{\"id\":%d,\"name\":\"%s\",\"x\":%.1f,\"y\":%.1f,\"type\":\"%s\"}", i ? "," : "", i, n->name, n->x,
+                n->y, types[n->type]);
     }
     fprintf(f, "],\n\"edges\":[");
     for (int i = 0; i < g->n_edges; i++) {
         const Edge *e = &g->edges[i];
         fprintf(f, "%s{\"id\":%d,\"from\":%d,\"to\":%d,\"len\":%.1f,\"kmh\":%.0f,\"lanes\":%d,\"cap\":%d,\"rev\":%d}",
-                i ? "," : "", e->id, e->from, e->to, e->length, e->speed * 3.6, e->lanes, e->capacity, e->reverse);
+                i ? "," : "", i, e->from, e->to, e->length, e->speed * 3.6, e->lanes, e->capacity, e->reverse);
     }
     fprintf(f, "]");
 }
 
-/* All-pairs results of every algorithm for the interactive route planner. */
+static void write_summary(FILE *f, const AlgoSummary *s)
+{
+    fputc('[', f);
+    for (int a = 0; a < ALGO_COUNT; a++)
+        fprintf(f,
+                "%s{\"key\":\"%s\",\"name\":\"%s\",\"visited\":%.2f,\"relax\":%.2f,\"pqOps\":%.2f,"
+                "\"us\":%.3f,\"dist\":%.1f,\"optimal\":%.1f,\"excess\":%.2f}",
+                a ? "," : "", ALGO_KEY[a], ALGO_NAME[a], s[a].visited, s[a].relax, s[a].pq_ops, s[a].runtime_us,
+                s[a].distance_m, s[a].optimal_pct, s[a].excess_pct);
+    fputc(']', f);
+}
+
+static void write_bench(FILE *f, const BenchRow *rows)
+{
+    fprintf(f, "\"bench\":[");
+    for (int i = 0; i < BENCH_SIZES; i++) {
+        fprintf(f, "%s{\"V\":%d,\"E\":%d,\"us\":{", i ? "," : "", rows[i].V, rows[i].E);
+        for (int a = 0; a < ALGO_COUNT; a++) fprintf(f, "%s\"%s\":%.2f", a ? "," : "", ALGO_KEY[a], rows[i].runtime_us[a]);
+        fprintf(f, "},\"visited\":{");
+        for (int a = 0; a < ALGO_COUNT; a++) fprintf(f, "%s\"%s\":%.1f", a ? "," : "", ALGO_KEY[a], rows[i].visited[a]);
+        fprintf(f, "}}");
+    }
+    fprintf(f, "]");
+}
+
 static void write_planner(FILE *f, const Graph *g)
 {
-    static const Algorithm algos[] = {ALGO_DIJKSTRA, ALGO_ASTAR, ALGO_BFS, ALGO_BELLMAN_FORD};
     fprintf(f, "\"planner\":{");
-    for (int k = 0; k < 4; k++) {
-        fprintf(f, "%s\"%s\":[", k ? ",\n" : "", algo_key(algos[k]));
+    for (int a = DIJKSTRA; a <= BELLMAN_FORD; a++) {
+        fprintf(f, "%s\"%s\":[", a ? ",\n" : "", ALGO_KEY[a]);
         for (int s = 0; s < g->n_nodes; s++)
             for (int d = 0; d < g->n_nodes; d++) {
                 if (s || d) fputc(',', f);
@@ -53,46 +62,43 @@ static void write_planner(FILE *f, const Graph *g)
                     fprintf(f, "null");
                     continue;
                 }
-                PathResult r = find_path(g, s, d, WEIGHT_DISTANCE, algos[k], 1);
+                PathResult r = find_path(g, s, d, BY_DISTANCE, a);
                 fputc('[', f);
                 write_ints(f, r.path, r.found ? r.path_len : 0);
                 fputc(',', f);
-                write_ints(f, r.visit_order, r.visit_count);
+                write_ints(f, r.order, r.visited);
                 fprintf(f, ",%.0f,%d,%ld,%.2f]", r.found ? r.distance_m : -1, r.visited, r.relaxations, r.runtime_us);
-                path_result_free(&r);
+                path_free(&r);
             }
         fprintf(f, "]");
     }
     fprintf(f, "}");
 }
 
-static void write_signals(FILE *f, const Simulation *s)
-{
-    fprintf(f, "\"signals\":[");
-    for (int i = 0; i < s->n_signals; i++) fprintf(f, i ? ",%d" : "%d", s->signals[i].node);
-    fprintf(f, "]");
-}
-
 static void write_sim(FILE *f, const Simulation *s, const SimStats *st)
 {
     const Graph *g = s->g;
-    fprintf(f, "{\"corridor\":%d,\"dt\":%.2f,", s->cfg.corridor, s->cfg.dt * s->cfg.record_every);
-    fprintf(f, "\"stats\":{\"ambTime\":%.1f,\"ambPlanned\":%.1f,\"ambWait\":%.1f,\"ambDist\":%.0f,\"ambArrived\":%d,"
-               "\"vehicles\":%d,\"done\":%d,\"avgTrip\":%.1f,\"avgWait\":%.1f,\"avgCong\":%.3f,\"peakCong\":%.2f,"
-               "\"maxQueue\":%d,\"preemptions\":%d},\n",
+    fprintf(f, "{\"corridor\":%d,\"dt\":%.2f,", s->corridor, DT * RECORD_EVERY);
+    fprintf(f,
+            "\"stats\":{\"ambTime\":%.1f,\"ambPlanned\":%.1f,\"ambWait\":%.1f,\"ambDist\":%.0f,\"ambArrived\":%d,"
+            "\"vehicles\":%d,\"done\":%d,\"avgTrip\":%.1f,\"avgWait\":%.1f,\"avgCong\":%.3f,\"peakCong\":%.2f,"
+            "\"maxQueue\":%d,\"preemptions\":%d},\n",
             st->amb_time_s, st->amb_planned_s, st->amb_wait_s, st->amb_dist_m, st->amb_arrived, st->vehicles_total,
-            st->vehicles_done, st->avg_trip_s, st->avg_wait_s, st->avg_congestion, st->peak_congestion,
-            st->max_queue, st->preemptions);
-    fprintf(f, "\"ambulance\":{\"src\":%d,\"dst\":%d,\"t\":%.1f,\"route\":", s->cfg.ambulance_src,
-            s->cfg.ambulance_dst, s->cfg.ambulance_t);
-    write_ints(f, s->amb_route, s->amb_route_len);
+            st->vehicles_done, st->avg_trip_s, st->avg_wait_s, st->avg_congestion, st->peak_congestion, st->max_queue,
+            st->preemptions);
+
+    fprintf(f, "\"ambulance\":{\"src\":%d,\"dst\":%d,\"t\":%.1f,\"route\":", AMB_FROM, AMB_TO, AMB_START);
+    if (s->ambulance >= 0) write_ints(f, s->veh[s->ambulance].route, s->veh[s->ambulance].route_len);
+    else write_ints(f, NULL, 0);
+
     fprintf(f, "},\n\"series\":{\"cong\":[");
-    for (int i = 0; i < s->n_frames; i++) fprintf(f, i ? ",%.3f" : "%.3f", s->avg_cong_series[i]);
-    fprintf(f, "],\"active\":");
-    write_ints(f, s->active_series, s->n_frames);
-    fprintf(f, ",\"queued\":");
-    write_ints(f, s->queued_series, s->n_frames);
-    fprintf(f, "},\n\"frames\":[");
+    for (int i = 0; i < s->n_frames; i++) fprintf(f, i ? ",%.3f" : "%.3f", s->frames[i].avg_cong);
+    fprintf(f, "],\"active\":[");
+    for (int i = 0; i < s->n_frames; i++) fprintf(f, i ? ",%d" : "%d", s->frames[i].n_veh);
+    fprintf(f, "],\"queued\":[");
+    for (int i = 0; i < s->n_frames; i++) fprintf(f, i ? ",%d" : "%d", s->frames[i].queued);
+
+    fprintf(f, "]},\n\"frames\":[");
     for (int i = 0; i < s->n_frames; i++) {
         const Frame *fr = &s->frames[i];
         fprintf(f, "%s{\"t\":%.1f,\"v\":", i ? ",\n" : "", fr->t);
@@ -104,47 +110,30 @@ static void write_sim(FILE *f, const Simulation *s, const SimStats *st)
     fprintf(f, "]}");
 }
 
-static void write_summary(FILE *f, const AlgoSummary *s)
-{
-    fputc('[', f);
-    for (int a = 0; a < ALGO_COUNT; a++)
-        fprintf(f, "%s{\"key\":\"%s\",\"name\":\"%s\",\"visited\":%.2f,\"relax\":%.2f,\"pqOps\":%.2f,"
-                   "\"us\":%.3f,\"dist\":%.1f,\"optimal\":%.1f,\"excess\":%.2f}",
-                a ? "," : "", algo_key(a), algo_name(a), s[a].avg_visited, s[a].avg_relax, s[a].avg_pq_ops,
-                s[a].avg_runtime_us, s[a].avg_distance_m, s[a].optimal_pct, s[a].avg_excess_pct);
-    fputc(']', f);
-}
-
-int export_js(const char *path, const ExportData *d)
+int export_js(const char *path, const Graph *g, Simulation *sims[2], const SimStats stats[2],
+              const AlgoSummary dist[ALGO_COUNT], const AlgoSummary time[ALGO_COUNT], const BenchRow bench[BENCH_SIZES])
 {
     FILE *f = fopen(path, "w");
     if (!f) return -1;
-    fprintf(f, "/* Generated by the C core (./traffic --export). Do not edit by hand. */\n");
+
     fprintf(f, "window.SIM_DATA = {\n");
-    write_graph(f, d->g);
-    fprintf(f, ",\n");
-    write_signals(f, d->sims[0]);
-    fprintf(f, ",\n\"algorithms\":{\"distance\":");
-    write_summary(f, d->dist_summary);
+    write_graph(f, g);
+    fprintf(f, ",\n\"signals\":[");
+    for (int i = 0; i < sims[0]->n_signals; i++) fprintf(f, i ? ",%d" : "%d", sims[0]->signals[i].node);
+    fprintf(f, "],\n\"algorithms\":{\"distance\":");
+    write_summary(f, dist);
     fprintf(f, ",\"time\":");
-    write_summary(f, d->time_summary);
-    fprintf(f, "},\n\"bench\":[");
-    for (int i = 0; i < d->n_bench; i++) {
-        const BenchRow *b = &d->bench[i];
-        fprintf(f, "%s{\"V\":%d,\"E\":%d,\"us\":{", i ? "," : "", b->V, b->E);
-        for (int a = 0; a < ALGO_COUNT; a++) fprintf(f, "%s\"%s\":%.2f", a ? "," : "", algo_key(a), b->runtime_us[a]);
-        fprintf(f, "},\"visited\":{");
-        for (int a = 0; a < ALGO_COUNT; a++) fprintf(f, "%s\"%s\":%.1f", a ? "," : "", algo_key(a), b->visited[a]);
-        fprintf(f, "}}");
-    }
-    fprintf(f, "],\n");
-    write_planner(f, d->g);
-    fprintf(f, ",\n\"sims\":[");
-    write_sim(f, d->sims[0], &d->stats[0]);
+    write_summary(f, time);
+    fprintf(f, "},\n");
+    write_bench(f, bench);
     fprintf(f, ",\n");
-    write_sim(f, d->sims[1], &d->stats[1]);
+    write_planner(f, g);
+    fprintf(f, ",\n\"sims\":[");
+    write_sim(f, sims[0], &stats[0]);
+    fprintf(f, ",\n");
+    write_sim(f, sims[1], &stats[1]);
     fprintf(f, "]\n};\n");
-    int err = ferror(f);
+
     fclose(f);
-    return err ? -1 : 0;
+    return 0;
 }

@@ -1,7 +1,3 @@
-/*
- * Visualisation layer. All numbers come from the C core via data/sim_data.js
- * (window.SIM_DATA) -- this file only draws; it runs no routing algorithm.
- */
 (function () {
   "use strict";
 
@@ -25,7 +21,6 @@
   const fmtTime = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
   const fmt = (v, d = 0) => Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 
-  /* -------------------------------------------------------------- tooltip */
   const tip = $("tooltip");
   function showTip(evt, html) {
     tip.innerHTML = html;
@@ -39,7 +34,6 @@
   }
   const hideTip = () => (tip.hidden = true);
 
-  /* -------------------------------------------------------------- map geometry */
   const xs = D.nodes.map((n) => n.x), ys = D.nodes.map((n) => n.y);
   const W = { x0: Math.min(...xs) - 60, y0: Math.min(...ys) - 50, w: 980, h: 680 };
 
@@ -75,13 +69,12 @@
       c.clearRect(0, 0, this.cssW, this.cssW);
       return c;
     }
-    /* geometry of a directed edge in screen space, offset to the left lane (India keeps left) */
     edgeGeom(e, lane = 1) {
       const ed = D.edges[e], a = D.nodes[ed.from], b = D.nodes[ed.to];
       const ax = this.sx(a.x), ay = this.sy(a.y), bx = this.sx(b.x), by = this.sy(b.y);
       const len = Math.hypot(bx - ax, by - ay) || 1;
       const dx = (bx - ax) / len, dy = (by - ay) / len;
-      const nx = dy, ny = -dx;                  // left-hand normal (y axis points down)
+      const nx = dy, ny = -dx;
       const off = (ed.lanes * 1.4 + 1.5) * Math.min(1.6, this.k) * 0.9 * lane;
       const trim = 11 * Math.min(1.6, this.k);
       return {
@@ -119,7 +112,7 @@
         c.fillStyle = fill || css("node"); c.fill();
         c.lineWidth = opts.ring && opts.ring(i) ? 3 : 1.5;
         c.strokeStyle = opts.ring && opts.ring(i) ? opts.ring(i) : css("axis"); c.stroke();
-        if (n.type === "hospital") {                       // red cross
+        if (n.type === "hospital") {
           c.fillStyle = css("critical");
           c.fillRect(x - r * 0.55, y - r * 0.18, r * 1.1, r * 0.36);
           c.fillRect(x - r * 0.18, y - r * 0.55, r * 0.36, r * 1.1);
@@ -141,7 +134,6 @@
     }
   }
 
-  /* -------------------------------------------------------------- tabs + theme */
   document.querySelectorAll(".tabs button").forEach((b) =>
     b.addEventListener("click", () => {
       document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
@@ -154,10 +146,10 @@
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
-    try { localStorage.setItem("sc-theme", root.dataset.theme); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem("sc-theme", root.dataset.theme); } catch (e) {}
     route.draw(); renderAnalytics(true);
   });
-  try { const t = localStorage.getItem("sc-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) { /* ignore */ }
+  try { const t = localStorage.getItem("sc-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
   function segmented(id, onPick) {
     const root = $(id);
@@ -169,7 +161,6 @@
     });
   }
 
-  /* ============================================================== SIMULATION */
   const sim = {
     view: new MapView($("map-sim")),
     run: 1, t: 0, speed: 5, playing: true, last: null,
@@ -183,7 +174,6 @@
     return Math.min(s.frames.length - 1, Math.max(0, Math.floor(t / s.dt)));
   }
 
-  /* vehicles of frame i, linearly interpolated toward frame i+1 when on the same road */
   function vehiclesAt(t) {
     const s = simData(), i = frameIndex(t), f = s.frames[i], g = s.frames[i + 1];
     const alpha = g ? (t - f.t) / (g.t - f.t) : 0;
@@ -216,7 +206,6 @@
     const c = v.begin(), s1 = Math.min(1.6, v.k);
     v.drawRoadBeds();
 
-    // ambulance's planned route
     const route = s.ambulance.route;
     if (sim.t >= s.ambulance.t && route.length) {
       c.save();
@@ -226,7 +215,6 @@
       c.stroke(); c.restore();
     }
 
-    // each direction coloured by congestion
     c.lineCap = "butt";
     D.edges.forEach((ed, e) => {
       const g = v.edgeGeom(e), cong = frame.c[e] / 100;
@@ -239,7 +227,6 @@
 
     v.drawNodes();
 
-    // traffic lights at each stop line
     D.edges.forEach((ed, e) => {
       if (!signalSet.has(ed.to)) return;
       const st = LIGHT[frame.l[e]];
@@ -250,7 +237,6 @@
       if (st === "preempt") { c.lineWidth = 2; c.strokeStyle = "#fff"; c.stroke(); }
     });
 
-    // vehicles
     vehicles.forEach((veh) => {
       if (veh.amb) return;
       const g = v.edgeGeom(veh.e);
@@ -331,9 +317,8 @@
   renderCompare();
   requestAnimationFrame(tick);
 
-  /* ============================================================== ROUTE PLANNER */
   const route = { view: new MapView($("map-route")), from: 13, to: 4, algo: "dijkstra", step: Infinity, timer: null };
-  const planner = (algo, s, d) => D.planner[algo][s * N + d];   // [path, visits, dist, visited, relax, us]
+  const planner = (algo, s, d) => D.planner[algo][s * N + d];
 
   ["r-from", "r-to"].forEach((id) => {
     $(id).innerHTML = D.nodes.map((n) => `<option value="${n.id}">${n.id}. ${n.name}</option>`).join("");
@@ -431,7 +416,6 @@
   $("map-route").addEventListener("mouseleave", hideTip);
   updateRoute();
 
-  /* ============================================================== ANALYTICS (inline SVG charts) */
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs, parent) {
     const n = document.createElementNS(NS, tag);
@@ -457,7 +441,6 @@
     if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
     return ticks;
   }
-  /* bar path with 4px rounded data end, square at the baseline */
   function barPath(x, y, w, h, r = 4) {
     r = Math.min(r, w / 2, h);
     return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
@@ -486,7 +469,6 @@
     });
   }
 
-  /* multi-series line chart with crosshair tooltip; xs shared, optional log y */
   function lineChart(container, cfg) {
     const w = 520, h = 260, m = { l: 52, r: 12, t: 12, b: 34 };
     const svg = svgFor(container, w, h);
@@ -517,7 +499,7 @@
     });
     (cfg.markers || []).forEach((mk) => {
       el("line", { x1: x(mk.x), x2: x(mk.x), y1: m.t, y2: m.t + ph, stroke: mk.color, "stroke-dasharray": "4 4", "stroke-width": 1.5 }, svg);
-      const right = x(mk.x) > m.l + pw * 0.6;   // keep labels inside the plot
+      const right = x(mk.x) > m.l + pw * 0.6;
       el("text", { x: x(mk.x) + (right ? -4 : 4), y: m.t + ph - 8 - (mk.row || 0) * 15, class: "lbl",
         "text-anchor": right ? "end" : "start" }, svg).textContent = mk.label;
     });

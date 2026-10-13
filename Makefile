@@ -23,7 +23,6 @@ build:
 run: $(BIN)
 	./$(BIN)
 
-# regenerate the data the web dashboard reads
 export: $(BIN)
 	mkdir -p web/data
 	./$(BIN) --export

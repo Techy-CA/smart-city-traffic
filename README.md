@@ -41,8 +41,9 @@ Then open `web/index.html` in any browser (double-click works; no server needed)
 ## Project layout
 
 ```
-include/            headers (one per module)
+include/city.h      every struct, constant and function declaration in one place
 src/
+  util.c            random numbers, timer, straight-line distance
   graph.c           adjacency-list graph, map loader, grid generator, BPR congestion model
   pq.c              indexed binary min-heap (decrease-key) + circular FIFO queue
   algorithms.c      Dijkstra (heap), Dijkstra (O(V^2) array), A*, BFS, Bellman-Ford
@@ -104,4 +105,4 @@ NODE <id> <x> <y> <junction|hospital|landmark> <Name_with_underscores>
 ROAD <u> <v> <lanes> <speed_kmh>        # two-way, length = straight line × 5 m
 ```
 
-Ambulance start/end and simulation parameters are in `sim_default_config()` in `src/traffic.c`.
+Ambulance start/end and simulation parameters are the constants in `include/city.h`.
